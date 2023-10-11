@@ -1,5 +1,5 @@
 use core::panic;
-use std::error::Error;
+use std::{borrow::BorrowMut, cell::RefCell, error::Error, rc::Rc};
 
 enum SharpKeyword {
     Type(TypeCategory),
@@ -28,29 +28,51 @@ mod constants {
 
 #[allow(dead_code)]
 pub fn parse_str(input_str: &str) -> Result<(), Box<dyn Error>> {
-    let lines = input_str.split('\n');
+    let lines = input_str.split('\n').collect::<Vec<&str>>();
+    let mut last_checked_line_index = Rc::new(RefCell::new(0));
 
     // Iterate each line.
-    for (index, mut line) in lines.into_iter().enumerate() {
+    for (i, line) in lines.as_slice().iter().enumerate() {
+        let mut line = *line;
+        if i <= *last_checked_line_index.borrow() {
+            continue;
+        }
+        *last_checked_line_index.borrow_mut() = Rc::new(RefCell::new(i));
+
         // Remove comments from `line`
         if line.starts_with("//") {
             continue;
         }
         if line.contains("//") {
             line = line.split("//").next().unwrap_or_else(|| {
-                panic!(
-                    "Failed to split line {} with comment. Line: {}",
-                    index, line
-                )
+                panic!("Failed to split line {} with comment. Line: {}", i, line)
             })
         }
 
         if line.starts_with(constants::syntax::SHARP_PREFIX) {
-            match parse_sharp(index, line) {
+            match read_sharp(i, line) {
                 Ok(sharp_keyword) => match sharp_keyword {
                     SharpKeyword::Type(type_category) => {
                         println!("TYPE KEYWORD: {:?}", type_category);
-                        // TODO
+
+                        println!(
+                            "(incoming) last_checked_line_index: {}",
+                            *last_checked_line_index.borrow()
+                        );
+
+                        match read_type(i, lines.as_slice(), &mut last_checked_line_index) {
+                            Ok(()) => {}
+                            Err(err) => {
+                                panic!(
+                                    "Failed to read type type description. Line: {}\nERROR: {}",
+                                    i, err
+                                );
+                            }
+                        }
+                        println!(
+                            "(outgoing) last_checked_line_index: {}",
+                            *last_checked_line_index.borrow()
+                        );
                     }
                     SharpKeyword::Chunk => {
                         println!("CHUNK KEYWORD");
@@ -58,10 +80,7 @@ pub fn parse_str(input_str: &str) -> Result<(), Box<dyn Error>> {
                     }
                 },
                 Err(err) => {
-                    panic!(
-                        "Failed to parse sharp keyword. Line: {}\nERROR: {}",
-                        index, err
-                    );
+                    panic!("Failed to parse sharp keyword. Line: {}\nERROR: {}", i, err);
                 }
             }
         }
@@ -70,9 +89,34 @@ pub fn parse_str(input_str: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+fn read_type(
+    i: usize,
+    lines_slice: &[&str],
+    last_checked_line_index: &mut Rc<RefCell<usize>>,
+) -> Result<(), Box<dyn Error>> {
+    let (at_sign, name) = lines_slice[*last_checked_line_index.borrow() + 1].split_at(1);
+
+    if at_sign != "@" {
+        return Err(format!("Expected @ sign. Line: {}", i))?;
+    }
+
+    let skip_amount = *last_checked_line_index.borrow() + 2;
+    for (j, item) in lines_slice.iter().enumerate().skip(skip_amount) {
+        if !(item.starts_with("    ") || item.starts_with("-->")) || item.trim().is_empty() {
+            break;
+        }
+        *last_checked_line_index.borrow_mut() = Rc::new(RefCell::new(j));
+        println!("{}, {}", j, item);
+
+        name; // TODO
+    }
+
+    Ok(())
+}
+
 #[allow(dead_code)]
-/// Parse sharp keyword.
-fn parse_sharp(index: usize, line: &str) -> Result<SharpKeyword, Box<dyn Error>> {
+/// Read sharp keyword.
+fn read_sharp(index: usize, line: &str) -> Result<SharpKeyword, Box<dyn Error>> {
     if !line.starts_with(constants::syntax::SHARP_PREFIX) {
         return Err(format!("Unexpected sharp prefix. Line: {}", index))?;
     }
