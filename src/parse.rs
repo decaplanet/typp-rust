@@ -1,5 +1,5 @@
 use core::panic;
-use std::{borrow::BorrowMut, cell::RefCell, error::Error, rc::Rc};
+use std::{cell::RefCell, error::Error, rc::Rc};
 
 enum SharpKeyword {
     Type(TypeCategory),
@@ -37,7 +37,7 @@ pub fn parse_str(input_str: &str) -> Result<(), Box<dyn Error>> {
         if i <= *last_checked_line_index.borrow() {
             continue;
         }
-        *last_checked_line_index.borrow_mut() = Rc::new(RefCell::new(i));
+        *last_checked_line_index.borrow_mut() = i;
 
         // Remove comments from `line`
         if line.starts_with("//") {
@@ -105,7 +105,7 @@ fn read_type(
         if !(item.starts_with("    ") || item.starts_with("-->")) || item.trim().is_empty() {
             break;
         }
-        *last_checked_line_index.borrow_mut() = Rc::new(RefCell::new(j));
+        *last_checked_line_index.borrow_mut() = j;
         println!("{}, {}", j, item);
 
         name; // TODO
